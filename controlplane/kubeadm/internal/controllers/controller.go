@@ -626,6 +626,13 @@ func (r *KubeadmControlPlaneReconciler) reconcileControlPlaneConditions(ctx cont
 
 	workloadCluster, err := r.managementCluster.GetWorkloadCluster(ctx, util.ObjectKey(controlPlane.Cluster))
 	if err != nil {
+		internal.UpdateStaticPodConditionsAsUnknown(ctx, controlPlane, err)
+		internal.UpdateEtcdConditionsAsUnknown(ctx, controlPlane)
+
+		// Patch machines with the updated conditions.
+		if err := controlPlane.PatchMachines(ctx); err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, errors.Wrap(err, "cannot get remote client to workload cluster")
 	}
 
