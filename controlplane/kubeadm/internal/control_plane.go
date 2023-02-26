@@ -258,3 +258,17 @@ func (c *ControlPlane) PatchMachines(ctx context.Context) error {
 	}
 	return kerrors.NewAggregate(errList)
 }
+
+// GetAllMachineStaticPodConditions returns a list of conditions of static pods that control plane machine runs
+func (c *ControlPlane) GetAllMachineStaticPodConditions() []clusterv1.ConditionType {
+	allMachinePodConditions := []clusterv1.ConditionType{
+		controlplanev1.MachineAPIServerPodHealthyCondition,
+		controlplanev1.MachineControllerManagerPodHealthyCondition,
+		controlplanev1.MachineSchedulerPodHealthyCondition,
+	}
+	if c.IsEtcdManaged() {
+		allMachinePodConditions = append(allMachinePodConditions, controlplanev1.MachineEtcdPodHealthyCondition)
+	}
+
+	return allMachinePodConditions
+}
