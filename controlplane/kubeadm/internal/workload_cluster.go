@@ -91,14 +91,21 @@ var (
 	ErrControlPlaneMinNodes = errors.New("cluster has fewer than 2 control plane nodes; removing an etcd member is not supported")
 )
 
+// AbstractWorkloadCluster defines all behaviors necessary to update conditions
+// on a reachable or unreachable workload clusters
+type AbstractWorkloadCluster interface {
+	UpdateStaticPodConditions(ctx context.Context, controlPlane *ControlPlane)
+	UpdateEtcdConditions(ctx context.Context, controlPlane *ControlPlane)
+}
+
 // WorkloadCluster defines all behaviors necessary to upgrade kubernetes on a workload cluster
 //
 // TODO: Add a detailed description to each of these method definitions.
 type WorkloadCluster interface {
+	AbstractWorkloadCluster
+
 	// Basic health and status checks.
 	ClusterStatus(ctx context.Context) (ClusterStatus, error)
-	UpdateStaticPodConditions(ctx context.Context, controlPlane *ControlPlane)
-	UpdateEtcdConditions(ctx context.Context, controlPlane *ControlPlane)
 	EtcdMembers(ctx context.Context) ([]string, error)
 	GetAPIServerCertificateExpiry(ctx context.Context, kubeadmConfig *bootstrapv1.KubeadmConfig, nodeName string) (*time.Time, error)
 
@@ -642,3 +649,10 @@ func ImageRepositoryFromClusterConfig(clusterConfig *bootstrapv1.ClusterConfigur
 	// Use defaulting or current values otherwise.
 	return ""
 }
+
+// UnreachableWorkload represents unreachable workload cluster, usually network / load-balancer error
+type UnreachableWorkload struct {
+	cause error
+}
+
+var _ AbstractWorkloadCluster = &UnreachableWorkload{}

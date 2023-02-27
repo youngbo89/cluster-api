@@ -44,10 +44,20 @@ func (w *Workload) UpdateEtcdConditions(ctx context.Context, controlPlane *Contr
 		w.updateManagedEtcdConditions(ctx, controlPlane)
 		return
 	}
-	w.updateExternalEtcdConditions(ctx, controlPlane)
+	updateExternalEtcdConditions(ctx, controlPlane)
 }
 
-func (w *Workload) updateExternalEtcdConditions(_ context.Context, controlPlane *ControlPlane) {
+func (w UnreachableWorkload) UpdateEtcdConditions(ctx context.Context, controlPlane *ControlPlane) {
+	if controlPlane.IsEtcdManaged() {
+		updateManagedEtcdConditionsAsUnknown(ctx, controlPlane)
+		return
+	}
+
+	updateExternalEtcdConditions(ctx, controlPlane)
+	return
+}
+
+func updateExternalEtcdConditions(_ context.Context, controlPlane *ControlPlane) {
 	// When KCP is not responsible for external etcd, we are reporting only health at KCP level.
 	conditions.MarkTrue(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition)
 
@@ -56,15 +66,19 @@ func (w *Workload) updateExternalEtcdConditions(_ context.Context, controlPlane 
 	// as a source for the etcd endpoint address; the address of the external etcd should be available on the kubeadm configuration.
 }
 
+func updateManagedEtcdConditionsAsUnknown(_ context.Context, controlPlane *ControlPlane) {
+	conditions.MarkUnknown(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition, controlplanev1.EtcdClusterInspectionFailedReason, "Failed to list nodes which are hosting the etcd members")
+	for _, m := range controlPlane.Machines {
+		conditions.MarkUnknown(m, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberInspectionFailedReason, "Failed to get the node which is hosting the etcd member")
+	}
+}
+
 func (w *Workload) updateManagedEtcdConditions(ctx context.Context, controlPlane *ControlPlane) {
 	// NOTE: This methods uses control plane nodes only to get in contact with etcd but then it relies on etcd
 	// as ultimate source of truth for the list of members and for their health.
 	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
 	if err != nil {
-		conditions.MarkUnknown(controlPlane.KCP, controlplanev1.EtcdClusterHealthyCondition, controlplanev1.EtcdClusterInspectionFailedReason, "Failed to list nodes which are hosting the etcd members")
-		for _, m := range controlPlane.Machines {
-			conditions.MarkUnknown(m, controlplanev1.MachineEtcdMemberHealthyCondition, controlplanev1.EtcdMemberInspectionFailedReason, "Failed to get the node which is hosting the etcd member")
-		}
+		updateManagedEtcdConditionsAsUnknown(ctx, controlPlane)
 		return
 	}
 
@@ -245,13 +259,7 @@ func (w *Workload) UpdateStaticPodConditions(ctx context.Context, controlPlane *
 	// NOTE: this fun uses control plane nodes from the workload cluster as a source of truth for the current state.
 	controlPlaneNodes, err := w.getControlPlaneNodes(ctx)
 	if err != nil {
-		for i := range controlPlane.Machines {
-			machine := controlPlane.Machines[i]
-			for _, condition := range allMachinePodConditions {
-				conditions.MarkUnknown(machine, condition, controlplanev1.PodInspectionFailedReason, "Failed to get the node which is hosting this component: %v", err)
-			}
-		}
-		conditions.MarkUnknown(controlPlane.KCP, controlplanev1.ControlPlaneComponentsHealthyCondition, controlplanev1.ControlPlaneComponentsInspectionFailedReason, "Failed to list nodes which are hosting control plane components: %v", err)
+		updateStaticPodConditionsAsUnknown(ctx, controlPlane, allMachinePodConditions, err)
 		return
 	}
 
@@ -336,6 +344,21 @@ func (w *Workload) UpdateStaticPodConditions(ctx context.Context, controlPlane *
 		unknownReason:     controlplanev1.ControlPlaneComponentsUnknownReason,
 		note:              "control plane",
 	})
+}
+
+func (w UnreachableWorkload) UpdateStaticPodConditions(ctx context.Context, controlPlane *ControlPlane) {
+	updateStaticPodConditionsAsUnknown(ctx, controlPlane, controlPlane.GetAllMachineStaticPodConditions(), w.cause)
+}
+
+func updateStaticPodConditionsAsUnknown(_ context.Context, controlPlane *ControlPlane, podConditions []clusterv1.ConditionType, cause error) {
+	for i := range controlPlane.Machines {
+		machine := controlPlane.Machines[i]
+		for _, condition := range podConditions {
+			conditions.MarkUnknown(machine, condition, controlplanev1.PodInspectionFailedReason, "Failed to get the node which is hosting this component: %v", cause)
+		}
+	}
+	conditions.MarkUnknown(controlPlane.KCP, controlplanev1.ControlPlaneComponentsHealthyCondition, controlplanev1.ControlPlaneComponentsInspectionFailedReason, "Failed to list nodes which are hosting control plane components: %v", cause)
+	return
 }
 
 func hasProvisioningMachine(machines collections.Machines) bool {

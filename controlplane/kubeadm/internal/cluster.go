@@ -46,6 +46,7 @@ type ManagementCluster interface {
 	GetMachinesForCluster(ctx context.Context, cluster *clusterv1.Cluster, filters ...collections.Func) (collections.Machines, error)
 	GetMachinePoolsForCluster(ctx context.Context, cluster *clusterv1.Cluster) (*expv1.MachinePoolList, error)
 	GetWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) (WorkloadCluster, error)
+	GetAbstractWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) AbstractWorkloadCluster
 }
 
 // Management holds operations on the management cluster.
@@ -166,6 +167,17 @@ func (m *Management) GetWorkloadCluster(ctx context.Context, clusterKey client.O
 		CoreDNSMigrator:     &CoreDNSMigrator{},
 		etcdClientGenerator: NewEtcdClientGenerator(restConfig, tlsConfig, m.EtcdDialTimeout, m.EtcdCallTimeout),
 	}, nil
+}
+
+// GetAbstractWorkloadCluster builds an abstract cluster object.
+// The cluster can be reachable or not, that's why returns no error
+func (m *Management) GetAbstractWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) AbstractWorkloadCluster {
+	w, err := m.GetWorkloadCluster(ctx, clusterKey)
+	if err != nil {
+		return UnreachableWorkload{cause: err}
+	}
+
+	return w
 }
 
 func (m *Management) getEtcdCAKeyPair(ctx context.Context, clusterKey client.ObjectKey) ([]byte, []byte, error) {

@@ -52,6 +52,10 @@ func (f *fakeManagementCluster) GetWorkloadCluster(_ context.Context, _ client.O
 	return f.Workload, nil
 }
 
+func (f *fakeManagementCluster) GetAbstractWorkloadCluster(ctx context.Context, clusterKey client.ObjectKey) internal.AbstractWorkloadCluster {
+	return f.Workload
+}
+
 func (f *fakeManagementCluster) GetMachinesForCluster(c context.Context, cluster *clusterv1.Cluster, filters ...collections.Func) (collections.Machines, error) {
 	if f.Management != nil {
 		return f.Management.GetMachinesForCluster(c, cluster, filters...)
